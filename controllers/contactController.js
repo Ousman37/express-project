@@ -1,22 +1,22 @@
 const asyncHandler = require('express-async-handler');
 const { constants } = require('../constants');
-// const Contact = require('../models/contact');
+const Contact = require('../models/contactModel');
 
 // @desc  Get all contacts
 // @route GET /api/contacts
-// @access Public
+// @access Private
 const getContacts = asyncHandler(async (req, res, next) => {
-  const contacts = await Contact.find();
-  res.status(constants.SUCCESS).json({
-    success: true,
-    count: contacts.length,
-    data: contacts,
-  });
+  const contacts = await Contact.find({ user_id: req.user.id });
+  if (contacts && contacts.length > 0) {
+    res.status(200).json(contacts);
+  } else {
+    res.status(404).json({ message: 'No contacts found for this user' });
+  }
 });
 
 // @desc  Create a new contact
 // @route POST /api/contacts
-// @access Public
+// @access Private
 const createContact = asyncHandler(async (req, res, next) => {
   console.log('The Request body is :', req.body);
   const { name, email, phone } = req.body;
@@ -29,8 +29,21 @@ const createContact = asyncHandler(async (req, res, next) => {
     return;
   }
 
+  if (!req.user || !req.user.id) {
+    res.status(constants.UNAUTHORIZED).json({
+      error: true,
+      message: 'User not authorized',
+    });
+    return;
+  }
+
   // Here you can add code to create the new contact in your database
-  const newContact = await Contact.create({ name, email, phone });
+  const newContact = await Contact.create({
+    name,
+    email,
+    phone,
+    user_id: req.user.id,
+  });
 
   res.status(constants.CREATED).json({
     success: true,
@@ -41,7 +54,7 @@ const createContact = asyncHandler(async (req, res, next) => {
 
 // @desc  Get contact
 // @route GET /api/contacts/:id
-// @access Public
+// @access Private
 const getContact = asyncHandler(async (req, res, next) => {
   const contact = await Contact.findById(req.params.id);
 
@@ -61,7 +74,7 @@ const getContact = asyncHandler(async (req, res, next) => {
 
 // @desc  Update a contact
 // @route PUT /api/contacts/:id
-// @access Public
+// @access Private
 const updateContact = asyncHandler(async (req, res, next) => {
   const contact = await Contact.findById(req.params.id);
 
@@ -69,6 +82,15 @@ const updateContact = asyncHandler(async (req, res, next) => {
     res.status(constants.NOT_FOUND).json({
       error: true,
       message: 'Contact not found',
+    });
+    return;
+  }
+
+  // Check if the contact belongs to the user making the request
+  if (contact.user_id.toString() !== req.user.id) {
+    res.status(constants.UNAUTHORIZED).json({
+      error: true,
+      message: 'You are not authorized to update this contact',
     });
     return;
   }
@@ -98,19 +120,17 @@ const updateContact = asyncHandler(async (req, res, next) => {
 
 // @desc  Delete a contact
 // @route DELETE /api/contacts/:id
-// @access Public
+// @access Private
 const deleteContact = asyncHandler(async (req, res, next) => {
-  const contact = await Contact.findById(req.params.id);
+  const result = await Contact.deleteOne({ _id: req.params.id });
 
-  if (!contact) {
+  if (result.deletedCount === 0) {
     res.status(constants.NOT_FOUND).json({
       error: true,
       message: 'Contact not found',
     });
     return;
   }
-
-  await contact.remove();
 
   res.status(constants.SUCCESS).json({
     success: true,
